@@ -2,12 +2,39 @@
 # python bank_check_ocr.py --image example_check.png --reference micr_e13b_reference.png
 
 # import the necessary packages
+from commonfunctions import *
 from skimage.segmentation import clear_border
 from imutils import contours
 import imutils
 import numpy as np
 import argparse
 import cv2
+
+alphabetics_dict = {}
+Alpha_numeric_list=['A','B','C','D','E','F','G','H','I','G','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+                    '0','1','2','3','4','5','6','7','8','9',
+                    'a','b','c','d','e','f','g','h','i','g','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z']
+
+# import image
+def read_image(image):
+    image = cv2.imread(image, cv2.IMREAD_GRAYSCALE)
+    ret, thresh = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY_INV)
+    return thresh
+
+#read letters images and save their histograms
+def readletters():
+    for i in range(26):
+        roi = read_image( 'alphanumeric/capital/' + Alpha_numeric_list[i] + '.png')
+        roi=cv2.resize(roi,(36, 36))
+        #show_images([roi],["roi"])
+        alphabetics_dict.update( { Alpha_numeric_list[i] : roi } )
+        
+    for i in range(26,62):
+        roi = read_image( "alphanumeric/" + Alpha_numeric_list[i] + ".png")
+        roi=cv2.resize(roi,(36, 36))
+        alphabetics_dict.update( { Alpha_numeric_list[i] : roi } )
+
+    return
 
 def extract_digits_and_symbols(image, charCnts, minW=5, minH=15):
 	# grab the internal Python iterator for the list of character
@@ -29,36 +56,39 @@ def extract_digits_and_symbols(image, charCnts, minW=5, minH=15):
 
 			# check to see if the width and height are sufficiently
 			# large, indicating that we have found a digit
-			if cW >= minW and cH >= minH:
+			# if cW >= minW and cH >= minH:
 				# extract the ROI
-				roi = image[cY:cY + cH, cX:cX + cW]
-				rois.append(roi)
-				locs.append((cX, cY, cX + cW, cY + cH))
+			roi = image[cY:cY + cH, cX:cX + cW]
+			show_images([roi])
+			roi=cv2.resize(roi,(50, 50))
+			rois.append(roi)
+			show_images([roi])
+			locs.append((cX, cY, cX + cW, cY + cH))
 
 			# otherwise, we are examining one of the special symbols
-			else:
-				# MICR symbols include three separate parts, so we
-				# need to grab the next two parts from our iterator,
-				# followed by initializing the bounding box
-				# coordinates for the symbol
-				parts = [c, next(charIter), next(charIter)]
-				(sXA, sYA, sXB, sYB) = (np.inf, np.inf, -np.inf,
-					-np.inf)
+			# else:
+			# 	# MICR symbols include three separate parts, so we
+			# 	# need to grab the next two parts from our iterator,
+			# 	# followed by initializing the bounding box
+			# 	# coordinates for the symbol
+			# 	parts = [c, next(charIter), next(charIter)]
+			# 	(sXA, sYA, sXB, sYB) = (np.inf, np.inf, -np.inf,
+			# 		-np.inf)
 
-				# loop over the parts
-				for p in parts:
-					# compute the bounding box for the part, then
-					# update our bookkeeping variables
-					(pX, pY, pW, pH) = cv2.boundingRect(p)
-					sXA = min(sXA, pX)
-					sYA = min(sYA, pY)
-					sXB = max(sXB, pX + pW)
-					sYB = max(sYB, pY + pH)
+			# 	# loop over the parts
+			# 	for p in parts:
+			# 		# compute the bounding box for the part, then
+			# 		# update our bookkeeping variables
+			# 		(pX, pY, pW, pH) = cv2.boundingRect(p)
+			# 		sXA = min(sXA, pX)
+			# 		sYA = min(sYA, pY)
+			# 		sXB = max(sXB, pX + pW)
+			# 		sYB = max(sYB, pY + pH)
 
-				# extract the ROI
-				roi = image[sYA:sYB, sXA:sXB]
-				rois.append(roi)
-				locs.append((sXA, sYA, sXB, sYB))
+			# 	# extract the ROI
+			# 	roi = image[sYA:sYB, sXA:sXB]
+			# 	rois.append(roi)
+			# 	locs.append((sXA, sYA, sXB, sYB))
 
 		# we have reached the end of the iterator; gracefully break
 		# from the loop
@@ -67,53 +97,15 @@ def extract_digits_and_symbols(image, charCnts, minW=5, minH=15):
 
 	# return a tuple of the ROIs and locations
 	return (rois, locs)
+readletters()
+# for key in alphabetics_dict:
+#show_images([alphabetics_dict['n']])
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
-ap.add_argument("-i", "--image", required=True,
+ap.add_argument("-i", "--image", required=False,
 	help="path to input image")
-ap.add_argument("-r", "--reference", required=True,
-	help="path to reference MICR E-13B font")
 args = vars(ap.parse_args())
-
-# initialize the list of reference character names, in the same
-# order as they appear in the reference image where the digits
-# their names and:
-# T = Transit (delimit bank branch routing transit #)
-# U = On-us (delimit customer account number)
-# A = Amount (delimit transaction amount)
-# D = Dash (delimit parts of numbers, such as routing or account)
-charNames = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
-	"T", "U", "A", "D"]
-
-# load the reference MICR image from disk, convert it to grayscale,
-# and threshold it, such that the digits appear as *white* on a
-# *black* background
-ref = cv2.imread(args["reference"])
-ref = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY)
-ref = imutils.resize(ref, width=400)
-ref = cv2.threshold(ref, 0, 255, cv2.THRESH_BINARY_INV |
-	cv2.THRESH_OTSU)[1]
-
-# find contours in the MICR image (i.e,. the outlines of the
-# characters) and sort them from left to right
-refCnts = cv2.findContours(ref.copy(), cv2.RETR_EXTERNAL,
-	cv2.CHAIN_APPROX_SIMPLE)
-refCnts = imutils.grab_contours(refCnts)
-refCnts = contours.sort_contours(refCnts, method="left-to-right")[0]
-
-# extract the digits and symbols from the list of contours, then
-# initialize a dictionary to map the character name to the ROI
-refROIs = extract_digits_and_symbols(ref, refCnts,
-	minW=10, minH=20)[0]
-chars = {}
-
-# loop over the reference ROIs
-for (name, roi) in zip(charNames, refROIs):
-	# resize the ROI to a fixed size, then update the characters
-	# dictionary, mapping the character name to the ROI
-	roi = cv2.resize(roi, (36, 36)) 
-	chars[name] = roi
 
 # initialize a rectangular kernel (wider than it is tall) along with
 # an empty list to store the output of the check OCR
@@ -123,15 +115,13 @@ output = []
 # load the input image, grab its dimensions, and apply array slicing
 # to keep only the bottom 20% of the image (that's where the account
 # information is)
-image = cv2.imread(args["image"])
-(h, w,) = image.shape[:2]
-delta = int(h - (h * 0.2))
-bottom = image[delta:h, 0:w]
-
+image = cv2.imread("TNRoman.png")
+delta=0
+#show_images([image])
 # convert the bottom image to grayscale, then apply a blackhat
 # morphological operator to find dark regions against a light
 # background (i.e., the routing and account numbers)
-gray = cv2.cvtColor(bottom, cv2.COLOR_BGR2GRAY)
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, rectKernel)
 
 # compute the Scharr gradient of the blackhat image, then scale
@@ -153,6 +143,7 @@ thresh = cv2.threshold(gradX, 0, 255,
 # remove any pixels that are touching the borders of the image (this
 # simply helps us in the next step when we prune contours)
 thresh = clear_border(thresh)
+show_images([thresh],["thresh"])
 
 # find contours in the thresholded image, then initialize the
 # list of group locations6we`2
@@ -168,8 +159,8 @@ for (i, c) in enumerate(groupCnts):
 
 	# only accept the contour region as a grouping of characters if
 	# the ROI is sufficiently large
-	if w > 50 and h > 15:
-		groupLocs.append((x, y, w, h))
+	#if w > 50 and h > 15:
+	groupLocs.append((x, y, w, h))
 
 # sort the digit locations from left-to-right
 groupLocs = sorted(groupLocs, key=lambda x:x[0])
@@ -183,11 +174,12 @@ for (gX, gY, gW, gH) in groupLocs:
 	# image, then apply thresholding to segment the digits from
 	# the background of the credit card
 	group = gray[gY - 5:gY + gH + 5, gX - 5:gX + gW + 5]
+	#show_images([group])
 	group = cv2.threshold(group, 0, 255,
 		cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
 
-	cv2.imshow("Group", group)
-	cv2.waitKey(0)
+	#cv2.imshow("Group", group)
+	#cv2.waitKey(0)
 
 	# find character contours in the group, then sort them from
 	# left to right
@@ -196,7 +188,7 @@ for (gX, gY, gW, gH) in groupLocs:
 	charCnts = imutils.grab_contours(charCnts)
 	charCnts = contours.sort_contours(charCnts,
 		method="left-to-right")[0]
-
+	#show_images([group])
 	# find the characters and symbols in the group
 	(rois, locs) = extract_digits_and_symbols(group, charCnts)
 
@@ -206,13 +198,17 @@ for (gX, gY, gW, gH) in groupLocs:
 		# resize the ROI to a fixed size
 		scores = []
 		roi = cv2.resize(roi, (36, 36))
-
+		#show_images([roi])
+		print("ROIIII")
 		# loop over the reference character name and corresponding
 		# ROI
-		for charName in charNames:
+		for charName in Alpha_numeric_list:
 			# apply correlation-based template matching, take the
 			# score, and update the scores list
-			result = cv2.matchTemplate(roi, chars[charName],
+			if charName=='r':
+				#print("Ay 7aga")
+				pass
+			result = cv2.matchTemplate(roi, alphabetics_dict[charName],
 				cv2.TM_CCOEFF)
 			(_, score, _, _) = cv2.minMaxLoc(result)
 			scores.append(score)
@@ -220,15 +216,7 @@ for (gX, gY, gW, gH) in groupLocs:
 		# the classification for the character ROI will be the
 		# reference character name with the *largest* template
 		# matching score
-		groupOutput.append(charNames[np.argmax(scores)])
-
-	# draw (padded) bounding box surrounding the group along with
-	# the OCR output of the group
-	cv2.rectangle(image, (gX - 10, gY + delta - 10),
-		(gX + gW + 10, gY + gY + delta), (0, 0, 255), 2)
-	cv2.putText(image, "".join(groupOutput),
-		(gX - 10, gY + delta - 25), cv2.FONT_HERSHEY_SIMPLEX,
-		0.95, (0, 0, 255), 3)
+		groupOutput.append(Alpha_numeric_list[np.argmax(scores)])
 
 	# add the group output to the overall check OCR output
 	output.append("".join(groupOutput))
