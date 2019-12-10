@@ -138,6 +138,7 @@ def SegmentImg2Lines(img):
 
 def Segmentline2word(line):
     roi_list=[]
+    locs=[]
     gray = cv2.cvtColor(line, cv2.COLOR_BGR2GRAY)
     ret, threshed_img = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
     kernel = np.ones((5,20), np.uint8)
@@ -152,12 +153,14 @@ def Segmentline2word(line):
         x, y, w, h = cv2.boundingRect(ctr)
         # Getting ROI
         roi = line[y:y + h, x:x + w]
+        locs.append((x, y, x + w,y + h))
         #show_images([roi],["Line ROI"])
         roi_list.append(roi)
-    return roi_list    
+    return roi_list,locs    
 
 def SegmentLine2Char(word):
     roi_list=[]
+    locs=[]
     #img = cv2.imread(line)
     gray = cv2.cvtColor(word, cv2.COLOR_BGR2GRAY)
     ret, threshed_img = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
@@ -170,11 +173,13 @@ def SegmentLine2Char(word):
         roi=cv2.resize(roi,(160, 160))
         #show_images([roi])
         roi_list.append(roi)
-    return roi_list
+        locs.append((x, y, x + w,y + h))
 
-def ExtractText(roi_list,alphabetics_dict,Alpha_numeric_list):
+    return roi_list,locs
+
+def ExtractText(roi_list,roi_locs,loc_list_bold,alphabetics_dict,Alpha_numeric_list):
     output=[]
-    for roi in roi_list:
+    for roi,loc in zip(roi_list,roi_locs):
         # initialize the list of template matching scores and
         # resize the ROI to a fixed size
         scores = []
@@ -182,17 +187,17 @@ def ExtractText(roi_list,alphabetics_dict,Alpha_numeric_list):
         # loop over the reference character name and corresponding
         # ROI
         #show_images([roi],["roi"])
-
         for charName in Alpha_numeric_list:
             # apply correlation-based template matching, take the
             # score, and update the scores list
-
             result = cv2.matchTemplate(roi, alphabetics_dict[charName], cv2.TM_CCOEFF_NORMED)
             (_, score, _, _) = cv2.minMaxLoc(result)
             scores.append(score)
     # the classification for the character ROI will be the
     # reference character name with the *largest* template
     # matching score
+        if loc in loc_list_bold:
+            print("Bold")
         output.append(Alpha_numeric_list[np.argmax(scores)])
     return output
 
@@ -269,21 +274,24 @@ def SegmentItalic(image):
 
 def DetectBold(image):
     locs=[]
+    roi_list_bold=[]
     img = cv2.imread(image)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     ret, threshed_img = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
     kernel=np.ones((11,11),np.uint8)
     opening = cv2.morphologyEx(threshed_img, cv2.MORPH_OPEN, kernel)
     neg=255-opening
-    show_images([neg])
-    contours, hier = cv2.findContours(erosion, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+    #show_images([neg])
+    contours, hier = cv2.findContours(opening, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
     contours = sorted(contours, key=lambda ctr: cv2.boundingRect(ctr)[0]) 
     for cnt in contours:
         hull = cv2.convexHull(cnt)
         x,y,w,h = cv2.boundingRect(cnt)
-        roi = erosion[y:y + h, x:x + w]
+        roi = opening[y:y + h, x:x + w]
+        #show_images([roi])
+        roi_list_bold.append(roi)
         locs.append((x, y, x + w,y + h))
-   
+    return roi_list_bold,locs
             
 def mse(imageA, imageB):
 	# the 'Mean Squared Error' between the two images is the
@@ -323,10 +331,13 @@ def compare_images(imageA, imageB, title):
 #alphabetics_dict_Arial,Alphabets_list_Arial=construct_alphabetics_dict('Arial/','Arial/Cap/')
 #alphabetics_dict_calibri,Alphabets_list_calibri=construct_alphabetics_dict('calibri/','calibri/Cap/')
 alphabetics_dict_times,Alphabets_list_times=construct_alphabetics_dict('times/','times/Cap/')
-lines=SegmentImg2Lines('TNRoman.png')
-words=Segmentline2word(lines[0])
-roi_list=SegmentLine2Char(words[0])
-output=ExtractText(roi_list,alphabetics_dict_times,Alphabets_list_times)
+lines=SegmentImg2Lines('google-font-noto-sans.png')
+#show_images([lines[2]])
+worddes,_=Segmentline2word(lines[2])
+roi_list,roi_locs=SegmentLine2Char(words[0])
+show_images([words[0]])
+roi_list_bold,locs_bold=DetectBold('google-font-noto-sans.png')
+output=ExtractText(roi_list,roi_locs,locs_bold,alphabetics_dict_times,Alphabets_list_times)
 print(output)
 #output=[]
 
